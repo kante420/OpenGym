@@ -1,0 +1,27 @@
+name: Copia de seguridad cifrada de la base de datos
+# El plan gratuito de Supabase no incluye copias diarias. Esta tarea vuelca la base de datos,
+# la CIFRA con tu frase secreta y la guarda 14 días como artefacto privado de la ejecución.
+# Importante: aunque el repositorio sea público, el volcado va cifrado y sin la frase no se puede leer.
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Volcar y cifrar
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          test -n "$SUPABASE_DB_URL" -a -n "$BACKUP_PASSPHRASE" || { echo "Faltan los secretos SUPABASE_DB_URL y BACKUP_PASSPHRASE"; exit 1; }
+          docker run --rm postgres:17 pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges --schema=public > dump.sql
+          test -s dump.sql
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_PASSPHRASE -in dump.sql -out "opengym-$(date +%F).sql.enc"
+          rm dump.sql
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opengym-backup
+          path: '*.sql.enc'
+          retention-days: 14
