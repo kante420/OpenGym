@@ -14,6 +14,10 @@ psql -d forzatest -f supabase/tests/04_client_bill.sql
 ```
 No ejecutes `00_legacy_fixture.sql` ni `01_seed.sql` contra tu proyecto real de Supabase.
 
+## Herramientas del propietario (migración 0004)
+`22a_seed.sql` + `22b_delete.sql` siembran dos gimnasios completos y comprueban que `platform_delete_gym` borra TODO lo del gimnasio indicado y deja intacto
+el otro, tanto con claves foráneas como sin ellas (simulando una base antigua). `20b_supabase_emulation_email.sql` es la emulación de `auth` con columna `email`.
+
 ## Facturación por mes natural (migración 0002)
 Si los roles `anon`/`authenticated` ya existen en tu Postgres local, usa `00b_fixture_without_roles.sql` en lugar del primer fichero.
 `10_billing_pre_0002.sql` deja una suscripción con el criterio antiguo (vence el día 17) **antes** de aplicar `0002`;

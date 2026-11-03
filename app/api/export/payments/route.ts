@@ -1,12 +1,18 @@
 import { getAuth } from '@/lib/auth';
 import type { Receipt } from '@/lib/types';
 
-const cell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+// Comillas escapadas + prefijo ' si empieza por = + - @ (evita inyección de fórmulas en Excel)
+const cell = (v: unknown) => {
+  let s = String(v ?? '');
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return `"${s.replace(/"/g, '""')}"`;
+};
 const eur = (n: number | null) => (n == null ? '' : Number(n).toFixed(2).replace('.', ','));
 
 export async function GET(req: Request) {
   const auth = await getAuth();
   if (!auth || auth.profile.role !== 'ADMINISTRADOR') return new Response('No autorizado', { status: 403 });
+  if (auth.mustChangePassword) return new Response('Cambia tu contraseña antes de continuar', { status: 403 });
 
   const month = new URL(req.url).searchParams.get('month') ?? '';
   if (!/^\d{4}-\d{2}$/.test(month)) return new Response('Mes no válido (usa AAAA-MM)', { status: 400 });

@@ -6,6 +6,8 @@ import { addDaysISO, formatDate, todayISO, weekdayName, parseDays } from '@/lib/
 import { getBlocks } from '@/lib/routine';
 import type { ClassRow, WorkoutLog } from '@/lib/types';
 import { PresentButton } from '@/components/present-button';
+import { ActionButton } from '@/components/ui/action';
+import { reopenSession } from '@/lib/actions/routines';
 import { Card, Chip, EmptyState, PageHeader } from '@/components/ui/primitives';
 
 export const metadata = { title: 'Hoy' };
@@ -51,7 +53,24 @@ export default async function CoachHome({ params }: { params: Promise<{ subdomai
                 <div className="flex flex-wrap items-center gap-3">
                   <PresentButton href={`${base}/present/${l.id}`} variant={l.is_completed ? 'ghost' : 'primary'} size="lg" />
                   {l.is_completed
-                    ? <><Chip tone="ok"><CheckCircle2 className="size-3.5" />Completada</Chip><Link className="btn btn-ghost" href={`${base}/coach/session/${l.id}`}>Revisar marcas</Link></>
+                    ? (
+                      <>
+                        <Chip tone="ok"><CheckCircle2 className="size-3.5" />Completada</Chip>
+                        <ActionButton
+                          action={reopenSession.bind(null, l.id)}
+                          variant="ghost"
+                          title="Quita el estado de completada para poder impartirla de nuevo o presentarla hoy"
+                          confirm={{
+                            title: `¿Reabrir «${l.title}»?`,
+                            message: 'La rutina volverá a aparecer como pendiente para hoy. Las marcas y asistencia ya anotadas se conservarán.',
+                            confirmLabel: 'Reabrir rutina',
+                          }}
+                        >
+                          Reabrir sesión
+                        </ActionButton>
+                        <Link className="btn btn-ghost" href={`${base}/coach/session/${l.id}`}>Revisar marcas</Link>
+                      </>
+                    )
                     : <Link className="btn btn-ghost btn-lg" href={`${base}/coach/session/${l.id}`}><Play className="size-4" />Anotar por alumno</Link>}
                 </div>
               </article>

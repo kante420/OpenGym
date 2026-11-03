@@ -37,6 +37,42 @@ const routineSchema = z.object({
   })).min(1).refine((b) => b.some((x) => x.exercises.length), 'Añade al menos un ejercicio.'),
 });
 
+/** Registra en el catálogo de ejercicios del gimnasio aquellos que sean nuevos. */
+async function autoRegisterExercises(
+  supabase: Awaited<ReturnType<typeof requireRole>>['supabase'],
+  gymId: string,
+  blocks: { exercises: { name: string }[] }[],
+) {
+  // Extraer nombres únicos y limpios de la rutina
+  const names = Array.from(
+    new Set(
+      blocks
+        .flatMap((b) => b.exercises.map((e) => e.name.trim()))
+        .filter((n) => n.length >= 2),
+    ),
+  );
+  if (names.length === 0) return;
+
+  // Consultar cuáles ya existen en el catálogo propio o global
+  const { data: existing } = await supabase
+    .from('exercises')
+    .select('name')
+    .or(`gym_id.eq.${gymId},gym_id.is.null`);
+
+  const existingSet = new Set((existing ?? []).map((e: { name: string }) => e.name.trim().toLowerCase()));
+  const missing = names.filter((n) => !existingSet.has(n.toLowerCase()));
+
+  if (missing.length > 0) {
+    try {
+      await supabase.from('exercises').insert(
+        missing.map((name) => ({ gym_id: gymId, name })),
+      );
+    } catch {
+      // Si ocurre un error de concurrencia o duplicado, no bloqueamos la publicación de la rutina
+    }
+  }
+}
+
 export async function publishRoutine(_p: ActionResult<{ id: string }> | null, fd: FormData) {
   return run<{ id: string }>(async () => {
     const { supabase, profile } = await requireRole([...STAFF]);
@@ -49,7 +85,29 @@ export async function publishRoutine(_p: ActionResult<{ id: string }> | null, fd
       gym_id: profile.gym_id, class_id, title, log_date, structure: b, description: blocksToDescription(b),
       is_completed: false, created_by: profile.id,
     }).select('id').single()) as { id: string };
+
+    await autoRegisterExercises(supabase, profile.gym_id, b);
+
     return { message: `Rutina «${title}» publicada.`, data: { id: created.id } };
+  });
+}
+
+export async function updateRoutine(id: string, _p: ActionResult<{ id: string }> | null, fd: FormData) {
+  return run<{ id: string }>(async () => {
+    const { supabase, profile } = await requireRole([...STAFF]);
+    let blocks: unknown;
+    try { blocks = JSON.parse(str(fd, 'blocks')); } catch { throw new UserError('La estructura de la rutina no es válida.'); }
+    const r = routineSchema.safeParse({ class_id: str(fd, 'class_id'), title: str(fd, 'title'), log_date: str(fd, 'log_date'), blocks });
+    if (!r.success) throw new UserError(r.error.issues[0].message);
+    const { class_id, title, log_date, blocks: b } = r.data;
+    const updated = unwrap(await supabase.from('workout_logs')
+      .update({ class_id, title, log_date, structure: b, description: blocksToDescription(b) })
+      .eq('id', id).eq('gym_id', profile.gym_id).select('id')) as { id: string }[];
+    if (!updated?.length) throw new UserError('Rutina no encontrada o sin permiso para editarla.');
+
+    await autoRegisterExercises(supabase, profile.gym_id, b);
+
+    return { message: `Rutina «${title}» actualizada.`, data: { id } };
   });
 }
 
@@ -61,18 +119,20 @@ export async function deleteRoutine(id: string) {
   });
 }
 
-export async function duplicateRoutine(id: string, _p: ActionResult | null, fd: FormData) {
-  return run(async () => {
+export async function duplicateRoutine(id: string, _p: ActionResult<{ id: string }> | null, fd: FormData) {
+  return run<{ id: string }>(async () => {
     const { supabase, profile } = await requireRole([...STAFF]);
     const date = str(fd, 'log_date');
+    const classId = str(fd, 'class_id');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new UserError('Elige la fecha de la copia.');
     const { data: src } = await supabase.from('workout_logs').select('*').eq('id', id).eq('gym_id', profile.gym_id).maybeSingle();
     if (!src) throw new UserError('Rutina no encontrada.');
-    unwrap(await supabase.from('workout_logs').insert({
-      gym_id: profile.gym_id, class_id: src.class_id, title: src.title, description: src.description,
+    const targetClass = classId || src.class_id;
+    const inserted = unwrap(await supabase.from('workout_logs').insert({
+      gym_id: profile.gym_id, class_id: targetClass, title: src.title, description: src.description,
       structure: src.structure, log_date: date, is_completed: false, created_by: profile.id,
-    }));
-    return { message: 'Rutina duplicada.' };
+    }).select('id').single()) as { id: string };
+    return { message: 'Rutina asignada / duplicada.', data: { id: inserted.id } };
   });
 }
 
@@ -89,6 +149,20 @@ export async function finishSession(logId: string, payload: unknown): Promise<Ac
     if (!r.success) throw new UserError('Los datos de la sesión no son válidos.');
     unwrap(await supabase.rpc('finish_session', { p_log_id: logId, p_attendance: r.data.attendance, p_marks: r.data.marks }));
     return { message: 'Sesión cerrada: asistencia y marcas guardadas.' };
+  });
+}
+
+export async function reopenSession(logId: string): Promise<ActionResult> {
+  return run(async () => {
+    const { supabase, profile } = await requireRole([...STAFF]);
+    unwrap(
+      await supabase
+        .from('workout_logs')
+        .update({ is_completed: false })
+        .eq('id', logId)
+        .eq('gym_id', profile.gym_id),
+    );
+    return { message: 'Rutina reabierta: vuelve a estar pendiente para la sesión grupal.' };
   });
 }
 

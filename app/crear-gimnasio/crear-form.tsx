@@ -17,6 +17,7 @@ export function CrearForm() {
   const [touched, setTouched] = useState(false);
   const [avail, setAvail] = useState<{ slug: string; ok: boolean; message: string } | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const startRef = useRef(0);
 
   useEffect(() => { startRef.current = Date.now(); }, []);
@@ -68,6 +69,16 @@ export function CrearForm() {
             <Field label="País"><input name="country" className="input" required maxLength={60} defaultValue="España" autoComplete="country-name" /></Field>
             <Field label="Teléfono del gimnasio"><input name="phone" type="tel" className="input" maxLength={30} autoComplete="tel" /></Field>
             <Field label="Web (opcional)"><input name="website" className="input" maxLength={120} placeholder="https://" /></Field>
+            <div className="flex flex-wrap items-center gap-4 sm:col-span-2">
+              <div className="grid size-20 shrink-0 place-items-center rounded-md border border-line bg-panel2 text-xs text-faint" aria-hidden>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {logoPreview ? <img src={logoPreview} alt="" className="h-14 w-14 object-contain" /> : 'Logo'}
+              </div>
+              <Field label="Logo del gimnasio (opcional)" hint="PNG, JPG o WebP, hasta 2 MB. Aparecerá en tu panel, en el acceso y en los recibos. Podrás cambiarlo luego." className="min-w-0 flex-1">
+                <input type="file" name="logo" accept="image/png,image/jpeg,image/webp" className="input !h-auto py-2 file:mr-3 file:rounded file:border-0 file:bg-panel2 file:px-3 file:py-1 file:text-sm file:text-fg"
+                  onChange={(e) => { const f = e.target.files?.[0]; setLogoPreview((old) => { if (old) URL.revokeObjectURL(old); return f ? URL.createObjectURL(f) : null; }); }} />
+              </Field>
+            </div>
             <Field label="Socios aproximados" className="sm:col-span-2">
               <select name="size_range" className="select" required defaultValue=""><option value="" disabled>Elige una opción</option><option>1-50</option><option>51-150</option><option>151-500</option><option>500+</option></select>
             </Field>

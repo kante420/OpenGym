@@ -10,6 +10,7 @@ import type { ActionResult, Role } from '../types';
 import { run, str } from './shared';
 import { clientInfo, hashToken, newToken, siteUrl } from '../platform';
 import { emailLayout, explainEmailError, sendEmail } from '../email';
+import { loadGymSmtp } from '../gym-mail';
 import { UserError } from '../auth';
 
 export async function signIn(subdomain: string, _prev: ActionResult | null, fd: FormData): Promise<ActionResult> {
@@ -23,17 +24,35 @@ export async function signIn(subdomain: string, _prev: ActionResult | null, fd: 
   if (!gym) return { ok: false, error: 'Este centro no existe.' };
   if (gym.status === 'suspended') return { ok: false, error: 'Este gimnasio está desactivado temporalmente. Contacta con OpenGym.' };
 
-  // Se admite el usuario o el email de la cuenta (el administrador se registra con su email)
+  // Límite de intentos fallidos: 10 por IP y 5 por cuenta cada 15 minutos
+  const admin = createAdminSupabase();
+  const info = await clientInfo();
+  const identKey = ident.toLowerCase();
+  const since15 = new Date(Date.now() - 15 * 60_000).toISOString();
+  try {
+    const [{ count: byIp }, { count: byIdent }] = await Promise.all([
+      admin.from('login_attempts').select('id', { count: 'exact', head: true }).eq('ip_hash', info.ipHash).gte('created_at', since15),
+      admin.from('login_attempts').select('id', { count: 'exact', head: true }).eq('gym_id', gym.id).eq('ident', identKey).gte('created_at', since15),
+    ]);
+    if ((byIp ?? 0) >= 10 || (byIdent ?? 0) >= 5) return { ok: false, error: 'Demasiados intentos fallidos. Espera 15 minutos e inténtalo de nuevo.' };
+  } catch { /* si la tabla aún no existe, no se bloquea el acceso */ }
+  const fail = async () => {
+    try { await admin.from('login_attempts').insert({ gym_id: gym.id, ip_hash: info.ipHash, ident: identKey }); } catch { /* informativo */ }
+    return { ok: false as const, error: 'Usuario o contraseña incorrectos.' };
+  };
+
+  // Se admite el usuario o el email de la cuenta (el administrador se registra con su email).
+  // Si el email no existe se intenta igualmente el login con un usuario imposible, para que
+  // el tiempo de respuesta no revele qué emails tienen cuenta.
   let username: string;
   if (ident.includes('@')) {
-    const { data: rows } = await createAdminSupabase().from('profiles').select('username').eq('gym_id', gym.id).ilike('email', ident.replace(/[%_\\]/g, '\\$&')).limit(2);
-    if (!rows || rows.length !== 1) return { ok: false, error: 'Usuario o contraseña incorrectos.' };
-    username = rows[0].username as string;
+    const { data: rows } = await admin.from('profiles').select('username').eq('gym_id', gym.id).ilike('email', ident.replace(/[%_\\]/g, '\\$&')).limit(2);
+    username = rows && rows.length === 1 ? (rows[0].username as string) : `__nouser_${newToken().slice(0, 12)}`;
   } else username = normalizeUsername(ident);
 
   const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail(username, subdomain), password });
   // Mensaje único para usuario inexistente o clave errónea: no revela qué cuentas existen
-  if (error || !data.user) return { ok: false, error: 'Usuario o contraseña incorrectos.' };
+  if (error || !data.user) return fail();
 
   const { data: profile } = await supabase.from('profiles').select('gym_id, role, active').eq('id', data.user.id).maybeSingle();
   if (!profile || profile.gym_id !== gym.id || !profile.active) {
@@ -99,10 +118,14 @@ export async function requestPasswordReset(subdomain: string, _p: ActionResult |
     const token = newToken();
     await admin.from('password_resets').insert({ user_id: user.id, gym_id: gym.id, token_hash: hashToken(token), ip_hash: info.ipHash, expires_at: new Date(Date.now() + 3_600_000).toISOString() });
     const url = `${siteUrl()}/${subdomain}/restablecer?token=${token}`;
-    try {
-      await sendEmail({ to: email, fromName: gym.name as string, subject: `Restablece tu contraseña · ${gym.name}`,
-        html: emailLayout('Restablece tu contraseña', `<p>Hola, ${escapeHtml(user.full_name)}. Alguien ha pedido crear una contraseña nueva para tu cuenta en <strong>${escapeHtml(gym.name as string)}</strong>.</p><p>El enlace caduca en 1 hora. Si no has sido tú, ignora este mensaje: tu contraseña no cambiará.</p>`, { label: 'Crear contraseña nueva', url }) });
-    } catch (e) { console.error('[reset-email]', explainEmailError(e)); }
+    const mail = { to: email, fromName: gym.name as string, subject: `Restablece tu contraseña · ${gym.name}`,
+      html: emailLayout('Restablece tu contraseña', `<p>Hola, ${escapeHtml(user.full_name)}. Alguien ha pedido crear una contraseña nueva para tu cuenta en <strong>${escapeHtml(gym.name as string)}</strong>.</p><p>El enlace caduca en 1 hora. Si no has sido tú, ignora este mensaje: tu contraseña no cambiará.</p>`, { label: 'Crear contraseña nueva', url }) };
+    const smtp = await loadGymSmtp(gym.id as string);
+    try { await sendEmail(mail, smtp ?? undefined); }
+    catch (e) {
+      console.error('[reset-email]', explainEmailError(e));
+      if (smtp) { try { await sendEmail(mail); } catch (e2) { console.error('[reset-email-fallback]', explainEmailError(e2)); } } // que nadie se quede sin poder entrar
+    }
     return generic;
   }, false);
 }

@@ -2,10 +2,12 @@ import { Suspense } from 'react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { CheckCircle2 } from 'lucide-react';
-import { BrandMark } from '@/components/brand';
+import { GymLogo } from '@/components/gym-logo';
+import { GithubLink } from '@/components/github-link';
 import { getAuth } from '@/lib/auth';
 import { gymPath, HOME_BY_ROLE } from '@/lib/paths';
 import { createServerSupabase } from '@/lib/supabase/server';
+import { getThemeStyles } from '@/lib/theme';
 import { LoginForm } from './login/login-form';
 
 async function LoginContent({ params, searchParams }: { params: Promise<{ subdomain: string }>; searchParams: Promise<{ creado?: string; clave?: string }> }) {
@@ -20,8 +22,8 @@ async function LoginContent({ params, searchParams }: { params: Promise<{ subdom
   if (!gym) notFound();
 
   return (
-    <div className="w-full max-w-sm">
-      <BrandMark className="mx-auto mb-5 h-12 w-auto" />
+    <div style={getThemeStyles(gym.color_theme)} className="w-full max-w-sm">
+      <GymLogo slug={gym.subdomain} version={gym.logo_version} className="mx-auto mb-5 h-16 w-auto max-w-[160px]" />
       <h1 className="display text-center text-5xl">{gym.name}</h1>
       <p className="mb-6 mt-2 text-center text-sm text-muted">Entra con tu usuario o email para ver tus clases, tu progreso y tus recibos.</p>
       {sp.creado && <p role="status" className="mb-4 flex items-start gap-2 rounded-md border border-ok/40 bg-ok/10 px-3 py-2.5 text-sm"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-ok" aria-hidden />¡Tu gimnasio está creado! Entra con tu email y la contraseña que elegiste.</p>}
@@ -33,7 +35,7 @@ async function LoginContent({ params, searchParams }: { params: Promise<{ subdom
         <p className="mb-3 text-sm text-faint">¿Quieres un sistema como este para tu gimnasio?</p>
         <Link href="/crear-gimnasio" className="btn btn-ghost w-full">Crear gimnasio</Link>
       </div>
-      <p className="mt-6 text-center text-xs text-faint">Con la tecnología de <Link href="/" className="text-muted hover:text-fg">OpenGym</Link></p>
+      <div className="mt-6 flex items-center justify-center gap-3 text-xs text-faint"><span>Con la tecnología de <Link href="/" className="text-muted hover:text-fg">OpenGym</Link></span><GithubLink /></div>
     </div>
   );
 }

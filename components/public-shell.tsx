@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { BrandMark, Wordmark } from '@/components/brand';
+import { GithubLink } from '@/components/github-link';
 
 /** Marco de las páginas públicas de OpenGym (portada, alta, legales). */
 export function PublicShell({ children, cta = true }: { children: React.ReactNode; cta?: boolean }) {
@@ -14,7 +15,7 @@ export function PublicShell({ children, cta = true }: { children: React.ReactNod
       <main className="relative mx-auto w-full max-w-5xl flex-1 px-5 pb-16">{children}</main>
       <footer className="relative mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-5 text-xs text-faint">
         <span>© OpenGym · Gestión de gimnasios</span>
-        <span className="flex gap-4"><Link href="/legal/privacidad" className="hover:text-fg">Privacidad</Link><Link href="/legal/terminos" className="hover:text-fg">Términos</Link></span>
+        <span className="flex items-center gap-4"><Link href="/legal/privacidad" className="hover:text-fg">Privacidad</Link><Link href="/legal/terminos" className="hover:text-fg">Términos</Link><GithubLink /></span>
       </footer>
     </div>
   );

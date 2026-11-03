@@ -23,7 +23,7 @@ gimnasio; nunca nombres de socios, pesos ni importes.
 ### 1. Supabase
 1. Crea un proyecto en supabase.com. Para producción usa uno distinto del de pruebas (el plan gratuito permite dos).
 2. **SQL Editor**: ejecuta, en este orden y una vez cada una: `0000_base_schema.sql`, `0001_hardening_and_features.sql`,
-   `0002_billing_first_of_month.sql`, `0003_platform.sql`. (`0009_drop_legacy_password.sql` es solo para migrar el proyecto antiguo.)
+   `0002_billing_first_of_month.sql`, `0003_platform.sql`, `0004_branding_mail_owner_tools.sql`. (`0009_drop_legacy_password.sql` es solo para migrar el proyecto antiguo.)
    No repitas la 0001 después de las demás: se niega a ejecutarse para no deshacer la seguridad.
 3. **Authentication → Sign In / Providers**: deja activado *Email* y **desactiva «Allow new users to sign up»** (las cuentas las crea
    el servidor) y «Confirm email».
@@ -50,6 +50,23 @@ En el repositorio → *Settings → Secrets and variables → Actions*:
 - **Variables**: `SITE_URL` = tu URL pública. Activa `keepalive.yml` (llama a `/api/health` cada día para que Supabase no pause el proyecto).
 - **Secretos**: `SUPABASE_DB_URL` (cadena de conexión *Session pooler* de Connect; las ejecuciones de GitHub son IPv4) y `BACKUP_PASSPHRASE`
   (frase larga que guardas tú). Activa `backup.yml`: copia diaria **cifrada**, 14 días. **Sin la frase no se puede restaurar: guárdala.**
+
+## Logo y correo de cada gimnasio
+- **Logo:** se sube al crear el gimnasio (o después, en *Ajustes*). Se valida por contenido (PNG/JPG/WebP; el SVG se rechaza), se reduce a 256 px y
+  aparece en el menú, en la pantalla de acceso y en los recibos en PDF.
+- **Correo de los recibos:** *Resend no puede enviar desde direcciones @gmail.com* (exige un dominio verificado). Por eso cada gimnasio conecta **su propia
+  cuenta** (p. ej. `forzagym@gmail.com`) con una *contraseña de aplicación* en *Ajustes → Correo*. Se guarda **cifrada** (AES-256-GCM, clave `SECRETS_KEY`) en
+  una tabla que la API pública no puede leer. Los proveedores permitidos son fijos (Gmail, Outlook, Yahoo, iCloud) para que nadie use el servidor para conectarse
+  a direcciones arbitrarias. El correo de verificación de altas y, si falla el del gimnasio, el de recuperar contraseña, salen del SMTP de la plataforma.
+
+## Panel del propietario
+`/superadmin`: además de ver y suspender, puedes **editar los datos de un gimnasio** (no su código, que forma parte de las cuentas de acceso) y **eliminarlo por
+completo** (datos, recibos y cuentas; exige escribir el código). Tu cuenta de propietario no tiene perfil en ningún gimnasio. El email de propietario no se puede
+usar como socio o entrenador de un gimnasio.
+
+## Si crear un gimnasio da «No se pudo crear la cuenta»
+Mira la consola del servidor: la línea `[signup-auth]` incluye el código real. Causas habituales: resto de un intento anterior (se limpia solo si la cuenta no
+pertenece a nadie), registro por email desactivado en Supabase, o `SUPABASE_SERVICE_ROLE_KEY` incorrecta. El mensaje de pantalla ya indica cuál es.
 
 ## Límites del plan gratuito (a 2026)
 Supabase: 500 MB de base de datos, 50.000 usuarios activos al mes, proyecto pausado tras una semana sin actividad y sin copias

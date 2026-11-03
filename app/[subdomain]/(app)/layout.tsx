@@ -1,6 +1,7 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
-import { BrandMark } from '@/components/brand';
+import { GymLogo } from '@/components/gym-logo';
+import { GithubLink } from '@/components/github-link';
 import { redirect } from 'next/navigation';
 import { LogOut, ShieldAlert } from 'lucide-react';
 import { getAuth } from '@/lib/auth';
@@ -8,6 +9,7 @@ import { gymBase, gymPath, HOME_BY_ROLE } from '@/lib/paths';
 import { signOut } from '@/lib/actions/auth';
 import { Nav } from '@/components/nav';
 import { Avatar, PageSkeleton } from '@/components/ui/primitives';
+import { getThemeStyles } from '@/lib/theme';
 
 const ROLE_LABEL = { ADMINISTRADOR: 'Administración', ENTRENADOR: 'Entrenador', CLIENTE: 'Socio' } as const;
 
@@ -19,10 +21,10 @@ async function Shell({ params, children }: { params: Promise<{ subdomain: string
   const base = await gymBase(subdomain);
 
   return (
-    <div className="min-h-dvh lg:pl-64">
+    <div style={getThemeStyles(gym.color_theme)} className="min-h-dvh lg:pl-64">
       <aside className="no-print fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-panel px-4 py-5 lg:flex">
         <Link href={base + HOME_BY_ROLE[profile.role]} className="mb-8 flex items-center gap-3 px-1">
-          <BrandMark className="h-7 w-auto shrink-0" />
+          <GymLogo slug={gym.subdomain} version={gym.logo_updated_at} className="h-9 w-auto max-w-[64px] shrink-0" />
           <span className="display text-2xl leading-none">{gym.name}</span>
         </Link>
         <div className="pl-4"><Nav role={profile.role} base={base} variant="side" /></div>
@@ -36,11 +38,12 @@ async function Shell({ params, children }: { params: Promise<{ subdomain: string
             <button aria-label="Cerrar sesión" title="Cerrar sesión" className="rounded p-2 text-muted hover:bg-panel2 hover:text-fg"><LogOut className="size-4" /></button>
           </form>
         </div>
+        <div className="mt-3 flex items-center justify-between text-[11px] text-faint"><span>Con la tecnología de OpenGym</span><GithubLink /></div>
       </aside>
 
       <header className="no-print sticky top-0 z-30 flex items-center justify-between border-b border-line bg-panel/95 px-4 py-3 backdrop-blur lg:hidden">
         <span className="flex items-center gap-2">
-          <BrandMark className="h-5 w-auto shrink-0" />
+          <GymLogo slug={gym.subdomain} version={gym.logo_updated_at} className="h-7 w-auto max-w-[44px] shrink-0" />
           <span className="display text-xl">{gym.name}</span>
         </span>
         <form action={signOut.bind(null, subdomain)}>

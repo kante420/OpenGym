@@ -7,6 +7,7 @@ import { formatDate, nowMs } from '@/lib/format';
 import { createAdminSupabase } from '@/lib/supabase/admin';
 import { getSuperAdmin } from '@/lib/superadmin';
 import { superAdminSignOut } from '@/lib/actions/superadmin';
+import { GithubLink } from '@/components/github-link';
 import { GymControls, PurgeButton, SuperLogin } from './controls';
 
 export const metadata = { title: 'Panel OpenGym', robots: { index: false, follow: false } };
@@ -15,6 +16,7 @@ interface Row {
   id: string; name: string; subdomain: string; status: string; max_members: number; city: string | null; province: string | null; country: string | null;
   director_name: string | null; contact_email: string | null; size_range: string | null; created_at: string; last_login_at: string | null;
   signup_country: string | null; signup_region: string | null; signup_city: string | null; members: number; staff: number; receipts: number; sessions: number;
+  address: string | null; postal_code: string | null; phone: string | null; website: string | null; has_logo: boolean;
 }
 interface Req { gym_name: string; slug: string; city: string | null; geo_country: string | null; geo_region: string | null; geo_city: string | null; created_at: string; expires_at: string; verified_at: string | null }
 
@@ -44,7 +46,7 @@ async function Dashboard() {
     <div className="mx-auto max-w-6xl px-5 py-8">
       <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3"><BrandMark className="h-8 w-auto" /><h1 className="display text-4xl">Panel de OpenGym</h1></div>
-        <div className="flex items-center gap-3 text-sm text-muted"><span>{sa.email}</span>
+        <div className="flex items-center gap-3 text-sm text-muted"><GithubLink /><span>{sa.email}</span>
           <form action={superAdminSignOut}><button className="btn btn-ghost btn-sm"><LogOut className="size-3.5" />Salir</button></form></div>
       </header>
 
@@ -90,7 +92,7 @@ async function Dashboard() {
                 <td className="num text-right"><span className={g.members >= g.max_members ? 'text-bad' : ''}>{g.members}</span><span className="text-faint"> / {g.max_members}</span></td>
                 <td className="num text-right">{g.staff}</td>
                 <td>{g.status === 'active' ? <Chip tone="ok">Activo</Chip> : <Chip tone="bad">Suspendido</Chip>}</td>
-                <td><GymControls id={g.id} name={g.name} status={g.status} maxMembers={g.max_members} /></td>
+                <td><GymControls gym={g} /></td>
               </tr>))}</tbody></table></div>
         )}
       </Card>

@@ -2,6 +2,8 @@
 import { z } from 'zod';
 import { requireRole, UserError } from '../auth';
 import { buildReceiptPdf } from '../receipt-pdf';
+import { loadGymSmtp } from '../gym-mail';
+import { loadPdfLogo } from '../gym-assets';
 import { emailConfigured, explainEmailError, sendReceiptEmail } from '../email';
 import { PAYMENT_METHODS, type ActionResult, type Gym, type Profile, type Receipt } from '../types';
 import { num, run, str, unwrap } from './shared';
@@ -10,9 +12,10 @@ type MailResult = { status: 'enviado' | 'sin-email' | 'no-configurado' | 'error'
 
 async function emailReceiptInternal(gym: Gym, client: Profile, receipt: Receipt): Promise<MailResult> {
   if (!client.email) return { status: 'sin-email', note: 'El socio no tiene email: descarga el recibo.' };
-  if (!emailConfigured()) return { status: 'no-configurado', note: 'Envío por email no configurado (ver README).' };
+  const smtp = await loadGymSmtp(gym.id); // cuenta de correo del propio gimnasio (Ajustes)
+  if (!smtp && !emailConfigured()) return { status: 'no-configurado', note: 'Para enviar recibos por email, conecta el correo de tu gimnasio en Ajustes.' };
   try {
-    await sendReceiptEmail({ gym, to: client.email, clientName: client.full_name, receipt, pdf: buildReceiptPdf(gym, client, receipt) });
+    await sendReceiptEmail({ gym, to: client.email, clientName: client.full_name, receipt, pdf: buildReceiptPdf(gym, client, receipt, await loadPdfLogo(gym.id)), smtp: smtp ?? undefined });
     return { status: 'enviado', note: `Recibo enviado a ${client.email}.` };
   } catch (e) {
     console.error('[email]', e); // el detalle completo queda en la consola del servidor

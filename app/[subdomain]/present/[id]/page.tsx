@@ -4,6 +4,7 @@ import { requirePage } from '@/lib/auth';
 import { gymBase } from '@/lib/paths';
 import { formatDate } from '@/lib/format';
 import { loadSessionData } from '@/lib/session-data';
+import { getThemeStyles } from '@/lib/theme';
 import { PresenterClient } from './presenter-loader';
 
 export const metadata = { title: 'Presentar' };
@@ -16,8 +17,12 @@ async function PresentContent({ params }: { params: Promise<{ subdomain: string;
   if (!d) notFound();
   const date = formatDate(d.log.log_date, { weekday: 'long', day: 'numeric', month: 'long', year: undefined });
 
-  return <PresenterClient logId={id} title={d.log.title} groupName={d.log.classes?.title ?? ''} dateLabel={date.charAt(0).toUpperCase() + date.slice(1)}
-    blocks={d.blocks} exercises={d.exercises} students={d.students} history={d.history} initialMarks={d.initialMarks} initialAttendance={d.initialAttendance} homeHref={`${base}/coach`} />;
+  return (
+    <div style={getThemeStyles(gym.color_theme)}>
+      <PresenterClient logId={id} title={d.log.title} groupName={d.log.classes?.title ?? ''} dateLabel={date.charAt(0).toUpperCase() + date.slice(1)}
+        blocks={d.blocks} exercises={d.exercises} students={d.students} history={d.history} initialMarks={d.initialMarks} initialAttendance={d.initialAttendance} homeHref={`${base}/coach`} />
+    </div>
+  );
 }
 
 export default function PresentPage({ params }: { params: Promise<{ subdomain: string; id: string }> }) {

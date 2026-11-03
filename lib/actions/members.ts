@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { requireRole, UserError } from '../auth';
 import { createAdminSupabase } from '../supabase/admin';
 import { loginEmail, normalizeUsername } from '../format';
+import { superAdminEmails } from '../superadmin';
 import type { ActionResult } from '../types';
 import { optStr, run, str, unwrap } from './shared';
 
@@ -30,6 +31,9 @@ function parseMember(fd: FormData) {
     birth_date: optStr(fd, 'birth_date'),
   });
   if (!r.success) throw new UserError(r.error.issues[0].message);
+  if (r.data.email && superAdminEmails().includes(r.data.email.toLowerCase())) {
+    throw new UserError('Ese email está reservado a la plataforma. Usa otro (con Gmail sirve un alias: tunombre+socio@gmail.com).');
+  }
   return r.data;
 }
 

@@ -43,10 +43,13 @@ export async function requirePage(subdomain: string, roles: Role[]) {
   return auth;
 }
 
-/** Para Server Actions: igual, pero lanza un error legible en lugar de redirigir. */
-export async function requireRole(roles: Role[]) {
+/** Para Server Actions: igual, pero lanza un error legible en lugar de redirigir.
+ *  Si se pasa `subdomain`, exige además que el usuario pertenezca a ese centro. */
+export async function requireRole(roles: Role[], subdomain?: string) {
   const auth = await getAuth();
   if (!auth) throw new UserError('Tu sesión ha caducado. Vuelve a iniciar sesión.');
+  if (subdomain && auth.gym.subdomain !== subdomain) throw new UserError('No tienes acceso a este centro.');
+  if (auth.mustChangePassword) throw new UserError('Cambia tu contraseña antes de continuar.');
   if (!roles.includes(auth.profile.role)) throw new UserError('No tienes permiso para realizar esta acción.');
   return auth;
 }

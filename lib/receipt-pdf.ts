@@ -2,11 +2,12 @@ import 'server-only';
 import { jsPDF } from 'jspdf';
 import type { Gym, Profile, Receipt } from './types';
 import { formatDate } from './format';
+import type { PdfLogo } from './gym-assets';
 
 const eur = (n: number) => `${n.toFixed(2).replace('.', ',')} €`;
 
 /** Genera el PDF del recibo en el servidor a partir de datos ya validados en base de datos. */
-export function buildReceiptPdf(gym: Gym, client: Pick<Profile, 'full_name' | 'dni' | 'email'>, r: Receipt): Buffer {
+export function buildReceiptPdf(gym: Gym, client: Pick<Profile, 'full_name' | 'dni' | 'email'>, r: Receipt, logo?: PdfLogo | null): Buffer {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = 210;
   const voided = Boolean(r.voided_at);
@@ -14,10 +15,19 @@ export function buildReceiptPdf(gym: Gym, client: Pick<Profile, 'full_name' | 'd
   // Cabecera
   doc.setFillColor(27, 26, 23);
   doc.rect(0, 0, W, 42, 'F');
+  let nameX = 14;
+  if (logo) {
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(14, 8, 26, 26, 2, 2, 'F');
+    const k = Math.min(22 / logo.width, 22 / logo.height);
+    const w = logo.width * k, h = logo.height * k;
+    doc.addImage(logo.dataUrl, logo.format, 14 + (26 - w) / 2, 8 + (26 - h) / 2, w, h);
+    nameX = 46;
+  }
   doc.setTextColor(224, 169, 59);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(20);
-  doc.text(doc.splitTextToSize(gym.name, 100), 14, 24);
+  doc.text(doc.splitTextToSize(gym.name, logo ? 90 : 100), nameX, 24);
   doc.setFontSize(18);
   doc.text('RECIBO DE PAGO', W - 14, 22, { align: 'right' });
   doc.setFontSize(10);

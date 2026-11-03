@@ -16,7 +16,8 @@ jobs:
           BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
         run: |
           test -n "$SUPABASE_DB_URL" -a -n "$BACKUP_PASSPHRASE" || { echo "Faltan los secretos SUPABASE_DB_URL y BACKUP_PASSPHRASE"; exit 1; }
-          docker run --rm postgres:17 pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges --schema=public > dump.sql
+          # public + auth: sin el esquema auth, los perfiles quedarían huérfanos al restaurar (usuarios y contraseñas)
+          docker run --rm postgres:17 pg_dump "$SUPABASE_DB_URL" --no-owner --no-privileges --schema=public --schema=auth > dump.sql
           test -s dump.sql
           openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_PASSPHRASE -in dump.sql -out "opengym-$(date +%F).sql.enc"
           rm dump.sql

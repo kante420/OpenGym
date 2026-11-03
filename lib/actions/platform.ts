@@ -6,6 +6,7 @@ import { emailLayout, explainEmailError, sendEmail } from '../email';
 import { escapeHtml, loginEmail, normalizeUsername } from '../format';
 import { clientInfo, hashToken, newToken, siteUrl, verifyCaptcha } from '../platform';
 import { validateSlug } from '../slug';
+import { processLogo } from '../logo';
 import type { ActionResult } from '../types';
 import { optStr, run, str } from './shared';
 
@@ -26,6 +27,22 @@ const schema = z.object({
   password: z.string().min(10, 'La contraseña debe tener al menos 10 caracteres.').max(72, 'La contraseña es demasiado larga.'),
   terms: z.literal('on', { error: 'Debes aceptar los términos y la política de privacidad.' }),
 });
+
+type AuthErr = { message?: string; status?: number; code?: string } | null;
+const isEmailExists = (e: AuthErr) => e?.code === 'email_exists' || /already.*registered|already exists/i.test(e?.message ?? '');
+
+/** Traduce el error de la API de autenticación a un mensaje útil (y el código, para poder diagnosticarlo). */
+function explainAuthError(e: AuthErr): string {
+  const m = (e?.message ?? '').toLowerCase();
+  const c = e?.code ?? '';
+  if (isEmailExists(e)) return 'Ya existe una cuenta con ese usuario en un gimnasio con ese código. Prueba con otro código.';
+  if (c === 'weak_password' || m.includes('password')) return 'La contraseña no es lo bastante segura. Usa una más larga o menos común.';
+  if (/disabled/.test(m) || c.includes('disabled')) return 'El registro por email está desactivado en tu proyecto de Supabase (Authentication → Sign In / Providers → Email).';
+  if (e?.status === 401 || /invalid api key|jwt/.test(m)) return 'La clave de servicio de Supabase no es válida (SUPABASE_SERVICE_ROLE_KEY en el servidor).';
+  // 500 «Database error creating new user»: casi siempre un trigger sobre auth.users que falla en Supabase
+  if (/database error/.test(m)) return 'Supabase no pudo guardar la cuenta (error de base de datos en auth.users). Revisa los triggers sobre auth.users y los logs de Auth en Supabase.';
+  return `No se pudo crear la cuenta${c || e?.status ? ` (código ${c || e?.status})` : ''}. Inténtalo de nuevo.`;
+}
 
 const since = (hours: number) => new Date(Date.now() - hours * 3_600_000).toISOString();
 
@@ -88,19 +105,41 @@ export async function requestGym(_p: ActionResult<{ email: string }> | null, fd:
 
     if (await slugTaken(d.slug)) throw new UserError('Ese código ya está en uso. Prueba con otro.');
 
+    // El logo se valida y reduce antes de crear nada (si no es una imagen válida, se avisa ya)
+    const logoFile = fd.get('logo');
+    const logo = logoFile instanceof File && logoFile.size > 0 ? await processLogo(logoFile) : null;
+
     // La cuenta se crea ya (sin guardar la contraseña en nuestras tablas) pero no da acceso hasta verificar el email
     const username = normalizeUsername(d.email.split('@')[0]) || 'admin';
-    const { data: created, error: aErr } = await admin.auth.admin.createUser({
-      email: loginEmail(username, d.slug), password: d.password, email_confirm: true, user_metadata: { full_name: d.director_name, pending_signup: true },
-    });
-    if (aErr || !created.user) throw new UserError(aErr?.message?.toLowerCase().includes('password') ? 'La contraseña no es lo bastante segura.' : 'No se pudo crear la cuenta. Inténtalo de nuevo.');
+    const authEmail = loginEmail(username, d.slug);
+    const make = () => admin.auth.admin.createUser({ email: authEmail, password: d.password, email_confirm: true, user_metadata: { full_name: d.director_name, pending_signup: true } });
+    let { data: created, error: aErr } = await make();
+    if (aErr && isEmailExists(aErr)) {
+      // Resto de un intento anterior (p. ej. un gimnasio borrado a mano): si esa cuenta no pertenece a nadie, se limpia y se reintenta
+      const { data: oldId } = await admin.rpc('auth_user_id_by_email', { p_email: authEmail });
+      if (typeof oldId === 'string') {
+        const [{ data: prof }, { data: pend }] = await Promise.all([
+          admin.from('profiles').select('id').eq('id', oldId).maybeSingle(),
+          admin.from('signup_requests').select('id').eq('auth_user_id', oldId).maybeSingle(),
+        ]);
+        if (!prof && !pend) {
+          await admin.auth.admin.deleteUser(oldId);
+          ({ data: created, error: aErr } = await make());
+        }
+      }
+    }
+    if (aErr || !created?.user) {
+      console.error('[signup-auth]', { code: aErr?.code, status: aErr?.status, message: aErr?.message });
+      throw new UserError(explainAuthError(aErr));
+    }
 
     const token = newToken();
     const { error: iErr } = await admin.from('signup_requests').insert({
       token_hash: hashToken(token), slug: d.slug, gym_name: d.gym_name, address: d.address, postal_code: d.postal_code, city: d.city, province: d.province,
       country: d.country, phone: d.phone, website: d.website, size_range: d.size_range, director_name: d.director_name, admin_email: d.email,
       admin_username: username, auth_user_id: created.user.id, ip_hash: info.ipHash, geo_country: info.country, geo_region: info.region, geo_city: info.city,
-      user_agent: info.userAgent, expires_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
+      user_agent: info.userAgent, logo_b64: logo?.b64 ?? null, logo_type: logo?.type ?? null, logo_w: logo?.width ?? null, logo_h: logo?.height ?? null,
+      expires_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
     });
     if (iErr) {
       await admin.auth.admin.deleteUser(created.user.id);
@@ -143,7 +182,11 @@ export async function confirmGym(token: string): Promise<ActionResult<{ slug: st
       await admin.from('gyms').delete().eq('id', gym.id);
       throw new UserError('No se pudo crear la cuenta de administrador. Inténtalo de nuevo.');
     }
-    await admin.from('signup_requests').update({ verified_at: new Date().toISOString() }).eq('id', r.id);
+    if (r.logo_b64) {
+      await admin.from('gym_logos').upsert({ gym_id: gym.id, content_type: r.logo_type, data_b64: r.logo_b64, width: r.logo_w, height: r.logo_h }, { onConflict: 'gym_id' });
+      await admin.from('gyms').update({ logo_updated_at: new Date().toISOString() }).eq('id', gym.id);
+    }
+    await admin.from('signup_requests').update({ verified_at: new Date().toISOString(), logo_b64: null, logo_type: null, logo_w: null, logo_h: null }).eq('id', r.id);
     await admin.auth.admin.updateUserById(r.auth_user_id as string, { user_metadata: { full_name: r.director_name, pending_signup: false, must_change_password: false } });
     return { data: { slug: r.slug as string } };
   }, false);

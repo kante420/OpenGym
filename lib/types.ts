@@ -24,8 +24,10 @@ export interface Gym {
   director_name: string | null;
   website: string | null;
   size_range: string | null;
+  color_theme?: string | null;
   created_at: string;
   last_login_at: string | null;
+  logo_updated_at: string | null;
 }
 
 export interface Profile {
