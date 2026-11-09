@@ -146,10 +146,11 @@ export async function requestGym(_p: ActionResult<{ email: string }> | null, fd:
       throw new UserError(iErr.code === '23505' ? 'Ese código acaba de ser reservado por otra persona. Prueba con otro.' : 'No se pudo registrar la solicitud. Inténtalo de nuevo.');
     }
 
+    const origin = siteUrl(info.host);
     try {
       await sendEmail({
         to: d.email, subject: 'Confirma tu gimnasio en OpenGym',
-        html: emailLayout(`Confirma «${d.gym_name}»`, `<p>Hola, ${escapeHtml(d.director_name)}. Para activar tu gimnasio <strong>${escapeHtml(d.gym_name)}</strong> en OpenGym, confirma que este email es tuyo.</p><p>Tu dirección será <strong>${escapeHtml(siteUrl().replace(/^https?:\/\//, ''))}/${escapeHtml(d.slug)}</strong>. El enlace caduca en 24 horas.</p><p style="color:#6b665b">Si no has creado ningún gimnasio, ignora este mensaje.</p>`, { label: 'Activar mi gimnasio', url: `${siteUrl()}/verificar?token=${token}` }),
+        html: emailLayout(`Confirma «${d.gym_name}»`, `<p>Hola, ${escapeHtml(d.director_name)}. Para activar tu gimnasio <strong>${escapeHtml(d.gym_name)}</strong> en OpenGym, confirma que este email es tuyo.</p><p>Tu dirección será <strong>${escapeHtml(origin.replace(/^https?:\/\//, ''))}/${escapeHtml(d.slug)}</strong>. El enlace caduca en 24 horas.</p><p style="color:#6b665b">Si no has creado ningún gimnasio, ignora este mensaje.</p>`, { label: 'Activar mi gimnasio', url: `${origin}/verificar?token=${token}` }),
       });
     } catch (e) {
       console.error('[signup-email]', e);

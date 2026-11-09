@@ -7,11 +7,16 @@ export const hashToken = (t: string) => createHash('sha256').update(t).digest('h
 export const newToken = () => randomBytes(32).toString('base64url');
 
 /** URL pública de la plataforma (para los enlaces de los emails). */
-export function siteUrl(): string {
+export function siteUrl(reqHost?: string | null): string {
+  if (reqHost && !reqHost.includes('localhost') && !reqHost.includes('127.0.0.1')) {
+    return `https://${reqHost}`;
+  }
   const explicit = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (explicit && !explicit.includes('localhost')) return explicit.replace(/\/$/, '');
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() || process.env.VERCEL_URL?.trim();
+  if (vercel) return `https://${vercel.replace(/\/$/, '')}`;
   if (explicit) return explicit.replace(/\/$/, '');
-  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
-  return vercel ? `https://${vercel}` : 'http://localhost:3000';
+  return 'http://localhost:3000';
 }
 
 /** Datos de la conexión. La IP sólo se guarda como hash (límite de intentos); la ubicación es aproximada (cabeceras de Vercel). */
@@ -21,7 +26,9 @@ export async function clientInfo() {
   const salt = process.env.SIGNUP_SALT ?? 'opengym';
   let city: string | null = null;
   try { city = decodeURIComponent(h.get('x-vercel-ip-city') ?? '') || null; } catch { city = null; }
+  const host = h.get('x-forwarded-host') ?? h.get('host');
   return {
+    host,
     ip,
     ipHash: createHash('sha256').update(`${salt}:${ip}`).digest('hex').slice(0, 32),
     country: h.get('x-vercel-ip-country'),
